@@ -8,6 +8,7 @@ import 'login_page.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'profile_view_page.dart';
+import 'my_profile_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -121,6 +122,21 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
           ),
           actions: [
 
+            // My Profile
+            IconButton(
+              icon: const Icon(
+                Icons.account_circle,
+                color: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const MyProfilePage(),
+                  ),
+                );
+              },
+            ),
             // Friend Requests
             IconButton(
               icon: const Icon(Icons.notifications),
