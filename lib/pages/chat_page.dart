@@ -32,19 +32,162 @@ class _ChatPageState extends State<ChatPage> {
     bool isRecording = false;
     String? recordedFilePath;
     bool isTyping = false;
+    bool isFriend = false;
+    bool isBlocked = false;
+    bool isMuted = false;
 
     @override
     void initState() {
       super.initState();
+      checkFriendStatus();
+      checkBlockStatus();
+      checkMuteStatus();
     }
     
- 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A1B4D),
+    Future<void> checkFriendStatus() async {
+      final result = await FirebaseFirestore.instance
+          .collection("friends")
+          .where(
+            "userId",
+            isEqualTo: currentUser.uid,
+          )
+          .where(
+            "friendId",
+            isEqualTo: widget.receiverId,
+          )
+          .limit(1)
+          .get();
 
-      appBar: AppBar(
+      if (!mounted) return;
+
+      setState(() {
+        isFriend = result.docs.isNotEmpty;
+      });
+    }
+    Future<void> checkBlockStatus() async {
+      final currentUserId = currentUser.uid;
+      final receiverId = widget.receiverId;
+
+      final myBlock = await FirebaseFirestore.instance
+          .collection("blocks")
+          .doc("${currentUserId}_$receiverId")
+          .get();
+
+      final theirBlock = await FirebaseFirestore.instance
+          .collection("blocks")
+          .doc("${receiverId}_$currentUserId")
+          .get();
+
+      if (!mounted) return;
+
+      setState(() {
+        isBlocked = myBlock.exists || theirBlock.exists;
+      });
+    }
+    Future<void> checkMuteStatus() async {
+      final doc = await FirebaseFirestore.instance
+          .collection("mutes")
+          .doc("${currentUser.uid}_${widget.receiverId}")
+          .get();
+
+      if (!mounted) return;
+
+      setState(() {
+        isMuted = doc.exists;
+      });
+    }
+    Future<void> toggleMute() async {
+      final muteId =
+          "${currentUser.uid}_${widget.receiverId}";
+
+      if (isMuted) {
+        await FirebaseFirestore.instance
+            .collection("mutes")
+            .doc(muteId)
+            .delete();
+
+        if (!mounted) return;
+
+        setState(() {
+          isMuted = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Notifications unmuted"),
+          ),
+        );
+      } else {
+        await FirebaseFirestore.instance
+            .collection("mutes")
+            .doc(muteId)
+            .set({
+          "userId": currentUser.uid,
+          "mutedUserId": widget.receiverId,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+
+        if (!mounted) return;
+
+        setState(() {
+          isMuted = true;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Notifications muted"),
+          ),
+        );
+      }
+    }
+    Future<void> blockUser() async {
+      await FirebaseFirestore.instance
+          .collection("blocks")
+          .doc("${currentUser.uid}_${widget.receiverId}")
+          .set({
+        "blockerId": currentUser.uid,
+        "blockedId": widget.receiverId,
+        "createdAt": FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        isBlocked = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("User blocked"),
+        ),
+      );
+    }
+
+    Future<void> unblockUser() async {
+      await FirebaseFirestore.instance
+          .collection("blocks")
+          .doc("${currentUser.uid}_${widget.receiverId}")
+          .delete();
+
+      if (!mounted) return;
+
+      setState(() {
+        isBlocked = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("User unblocked"),
+        ),
+      );
+    }
+
+    @override
+    Widget build(BuildContext context) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A1B4D),
+
+        appBar: AppBar(
         backgroundColor: const Color(0xFF0A1B4D),
         title: StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
@@ -76,10 +219,136 @@ class _ChatPageState extends State<ChatPage> {
             );
           },
         ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(
+              Icons.more_vert,
+              color: Colors.white,
+            ),
+            onSelected: (value) async {
+              if (value == "mute") {
+                await toggleMute();
+              }
+
+              if (value == "block") {
+                if (isBlocked) {
+                  await unblockUser();
+                } else {
+                  await blockUser();
+                }
+              }
+
+              if (value == "report") {
+                final reason = await showDialog<String>(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                      title: const Text("Report User"),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            title: const Text("Spam"),
+                            onTap: () => Navigator.pop(context, "Spam"),
+                          ),
+                          ListTile(
+                            title: const Text("Harassment"),
+                            onTap: () => Navigator.pop(context, "Harassment"),
+                          ),
+                          ListTile(
+                            title: const Text("Fake account"),
+                            onTap: () => Navigator.pop(context, "Fake account"),
+                          ),
+                          ListTile(
+                            title: const Text("Inappropriate content"),
+                            onTap: () =>
+                                Navigator.pop(context, "Inappropriate content"),
+                          ),
+                          ListTile(
+                            title: const Text("Other"),
+                            onTap: () => Navigator.pop(context, "Other"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+
+                if (reason == null) return;
+
+                await FirebaseFirestore.instance.collection("reports").add({
+                  "reporterId": currentUser.uid,
+                  "reportedUserId": widget.receiverId,
+                  "reason": reason,
+                  "createdAt": FieldValue.serverTimestamp(),
+                });
+
+                if (!mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("User reported successfully"),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: "mute",
+                child: Row(
+                  children: [
+                    Icon(
+                      isMuted
+                          ? Icons.notifications
+                          : Icons.notifications_off,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      isMuted
+                          ? "Unmute notifications"
+                          : "Mute notifications",
+                    ),
+                  ],
+                ),
+              ),
+
+              PopupMenuItem(
+                value: "block",
+                child: Row(
+                  children: [
+                    Icon(
+                      isBlocked
+                          ? Icons.lock_open
+                          : Icons.block,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      isBlocked
+                          ? "Unblock"
+                          : "Block",
+                    ),
+                  ],
+                ),
+              ),
+
+              const PopupMenuItem(
+                value: "report",
+                child: Row(
+                  children: [
+                    Icon(Icons.report),
+                    SizedBox(width: 10),
+                    Text("Report"),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
 
-      body: Column(
-        children: [
+      body: isFriend
+          ? Column(
+              children: [
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
@@ -162,6 +431,14 @@ class _ChatPageState extends State<ChatPage> {
               children: [
                 IconButton(
                   onPressed: () async {
+                    if (isBlocked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("You have blocked this user"),
+                        ),
+                      );
+                      return;
+                    }
                   try {
                     final XFile? image = await picker.pickImage(
                       source: ImageSource.gallery,
@@ -243,6 +520,25 @@ class _ChatPageState extends State<ChatPage> {
                   onPressed: () async {
 
                     if (messageController.text.trim().isEmpty) return;
+                    await checkBlockStatus();
+
+                    if (isBlocked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("You cannot message this user"),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (isBlocked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("You have blocked this user"),
+                        ),
+                      );
+                      return;
+                    }
 
                     String chatId;
 
@@ -286,6 +582,14 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 IconButton(
                   onPressed: () async {
+                    if (isBlocked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("You have blocked this user"),
+                        ),
+                      );
+                      return;
+                    }
                     if (!isRecording) {
                       if (await audioRecorder.hasPermission()) {
                         final dir = await getTemporaryDirectory();
@@ -357,10 +661,18 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ],
+      )
+    : const Center(
+        child: Text(
+          "You can message only your friends",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+          ),
+        ),
       ),
     );
   }
-
   Widget messageBubble(
     String messageId,
     String text,

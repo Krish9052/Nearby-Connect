@@ -138,14 +138,60 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
               },
             ),
             // Friend Requests
-            IconButton(
-              icon: const Icon(Icons.notifications),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RequestsPage(),
-                  ),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("friend_requests")
+                  .where(
+                    "receiverId",
+                    isEqualTo: FirebaseAuth.instance.currentUser!.uid,
+                  )
+                  .where(
+                    "status",
+                    isEqualTo: "pending",
+                  )
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
+
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.notifications,
+                        color: Colors.white,
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RequestsPage(),
+                          ),
+                        );
+                      },
+                    ),
+
+                    if (count > 0)
+                      Positioned(
+                        right: 4,
+                        top: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
@@ -295,20 +341,86 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                       ),
                     ],
                   ),
-                  trailing: ElevatedButton(
-                    onPressed: () async {
-                      await FriendService.sendRequest(
-                        senderId: currentUser!.uid,
-                        receiverId: user["uid"],
-                      );
+                  trailing: FutureBuilder<List<QuerySnapshot>>(
+                    future: Future.wait([
+                      FirebaseFirestore.instance
+                          .collection("friends")
+                          .where(
+                            "userId",
+                            isEqualTo: currentUser!.uid,
+                          )
+                          .where(
+                            "friendId",
+                            isEqualTo: user["uid"],
+                          )
+                          .limit(1)
+                          .get(),
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Friend Request Sent"),
+                      FirebaseFirestore.instance
+                          .collection("friend_requests")
+                          .where(
+                            "senderId",
+                            isEqualTo: currentUser!.uid,
+                          )
+                          .where(
+                            "receiverId",
+                            isEqualTo: user["uid"],
+                          )
+                          .where(
+                            "status",
+                            isEqualTo: "pending",
+                          )
+                          .limit(1)
+                          .get(),
+                    ]),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const SizedBox(
+                          width: 70,
+                          height: 36,
+                          child: Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      }
+
+                      final bool isFriend = snapshot.data![0].docs.isNotEmpty;
+                      final bool isRequested = snapshot.data![1].docs.isNotEmpty;
+                      return ElevatedButton(
+                        style: isFriend
+                            ? ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.withOpacity(0.25),
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: Colors.green.withOpacity(0.25),
+                                disabledForegroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                              )
+                            : null,
+                        onPressed: (isFriend || isRequested)
+                            ? null
+                            : () async {
+                                await FriendService.sendRequest(
+                                  senderId: currentUser!.uid,
+                                  receiverId: user["uid"],
+                                );
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text("Friend Request Sent"),
+                                  ),
+                                );
+                              },
+                        child: Text(
+                          isFriend
+                              ? "Friends"
+                              : isRequested
+                                  ? "Requested"
+                                  : "Add",
                         ),
                       );
                     },
-                    child: const Text("Add"),
                   ),
                   ),
                 ),

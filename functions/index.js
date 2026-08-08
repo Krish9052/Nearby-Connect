@@ -15,6 +15,31 @@ exports.sendChatNotification = onDocumentCreated(
 
       const senderId = messageData.senderId;
       const receiverId = messageData.receiverId;
+      // 🚫 Check if receiver blocked the sender
+      const blockId = `${receiverId}_${senderId}`;
+
+      const blockDoc = await admin
+          .firestore()
+          .collection("blocks")
+          .doc(blockId)
+          .get();
+
+      if (blockDoc.exists) {
+        console.log("User is blocked - notification not sent");
+        return;
+      }
+      // 🚫 Check if receiver muted the chat
+      const muteId = `${receiverId}_${senderId}`;
+      const muteDoc = await admin
+          .firestore()
+          .collection("mutes")
+          .doc(muteId)
+          .get();
+
+      if (muteDoc.exists) {
+        console.log("Notifications muted for this chat");
+        return;
+      }
 
       const senderDoc = await admin
           .firestore()
