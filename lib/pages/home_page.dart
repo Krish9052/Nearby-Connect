@@ -1,6 +1,10 @@
 import 'friends_page.dart';
 import '../services/friend_service.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'requests_page.dart';
@@ -234,7 +238,16 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
+                    final userDoc = await FirebaseFirestore.instance
+                        .collection("users")
+                        .doc(currentUser!.uid)
+                        .get();
+
+                    final data = userDoc.data() as Map<String, dynamic>?;
+
+                    final bool isVisible = data?["activityVisible"] == true;
+
                     showModalBottomSheet(
                       context: context,
                       backgroundColor: const Color(0xFF0A1B4D),
@@ -244,9 +257,11 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                         ),
                       ),
                       builder: (context) {
-                        return Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
+                        return SafeArea(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -299,6 +314,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                             .doc(currentUser!.uid)
                                             .update({
                                           "activity": activity,
+                                          "activityVisible": true,
                                           "activityUpdatedAt": FieldValue.serverTimestamp(),
                                         });
 
@@ -326,14 +342,197 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                               ),
 
                               const SizedBox(height: 20),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await FirebaseFirestore.instance
+                                        .collection("users")
+                                        .doc(currentUser!.uid)
+                                        .update({
+                                      "activityVisible": !isVisible,
+                                    });
+
+                                    if (!context.mounted) return;
+
+                                    Navigator.pop(context);
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          isVisible
+                                              ? "Your Moment hidden"
+                                              : "Your Moment visible",
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  icon: Icon(
+                                    isVisible
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: Colors.white,
+                                  ),
+                                  label: Text(
+                                    isVisible
+                                        ? "Hide Moment"
+                                        : "Show Moment",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
 
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
                                   onPressed: () {
-                                    Navigator.pop(context);
-
-                                    // Photo upload - next step
+                                    showModalBottomSheet(
+                                      context: context,
+                                      backgroundColor: const Color(0xFF0A1B4D),
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.vertical(
+                                          top: Radius.circular(25),
+                                        ),
+                                      ),
+                                      builder: (context) {
+                                        return SafeArea(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(20),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Text(
+                                                  "Add Your Moment Photo",
+                                                  style: TextStyle(
+                                                    color: Color(0xFF7DD3FC),
+                                                    fontSize: 20,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                              
+                                                const SizedBox(height: 20),
+                              
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.camera_alt,
+                                                    color: Colors.white,
+                                                  ),
+                                                  title: const Text(
+                                                    "Take a Photo",
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  onTap: () async {
+                                                    final ImagePicker picker = ImagePicker();
+                              
+                                                    final XFile? image = await picker.pickImage(
+                                                      source: ImageSource.camera,
+                                                      imageQuality: 85,
+                                                    );
+                              
+                                                    if (image == null) return;
+                              
+                                                    final File imageFile = File(image.path);
+                              
+                                                    // Upload imageFile - next step
+                                                  },
+                                                ),
+                              
+                                                ListTile(
+                                                  leading: const Icon(
+                                                    Icons.photo_library,
+                                                    color: Colors.white,
+                                                  ),
+                                                  title: const Text(
+                                                    "Choose from Gallery",
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  onTap: () async {
+                                                    final ImagePicker picker = ImagePicker();
+                              
+                                                    final XFile? image = await picker.pickImage(
+                                                      source: ImageSource.gallery,
+                                                      imageQuality: 85,
+                                                    );
+                              
+                                                    if (image == null) return;
+                              
+                                                    final File imageFile = File(image.path);
+                              
+                                                    try {
+                                                      var request = http.MultipartRequest(
+                                                        "POST",
+                                                        Uri.parse(
+                                                          "https://api.cloudinary.com/v1_1/pdkqgjw/image/upload",
+                                                        ),
+                                                      );
+                                                    
+                                                      request.fields["upload_preset"] = "nearby_profile";
+                                                    
+                                                      request.files.add(
+                                                        await http.MultipartFile.fromPath(
+                                                          "file",
+                                                          imageFile.path,
+                                                        ),
+                                                      );
+                                                    
+                                                      var response = await request.send();
+                                                    
+                                                      if (response.statusCode == 200) {
+                                                        var responseData =
+                                                            await response.stream.bytesToString();
+                                                    
+                                                        var jsonData = jsonDecode(responseData);
+                                                    
+                                                        final String activityPhoto =
+                                                            jsonData["secure_url"];
+                                                    
+                                                        await FirebaseFirestore.instance
+                                                            .collection("users")
+                                                            .doc(currentUser!.uid)
+                                                            .update({
+                                                          "activityPhoto": activityPhoto,
+                                                        });
+                                                    
+                                                        if (!context.mounted) return;
+                                                    
+                                                        Navigator.pop(context);
+                                                    
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(
+                                                            content: Text("Moment photo added"),
+                                                          ),
+                                                        );
+                                                      } else {
+                                                        throw Exception("Image upload failed");
+                                                      }
+                                                    } catch (e) {
+                                                      if (!context.mounted) return;
+                                                    
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text("Photo upload failed"),
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                ),
+                              
+                                                const SizedBox(height: 10),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
                                   },
                                   icon: const Icon(
                                     Icons.camera_alt,
@@ -347,9 +546,10 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                   ),
                                 ),
                               ),
-
                               const SizedBox(height: 10),
-                            ],
+                                ],
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -519,8 +719,10 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                         builder: (context) {
                           final userData = user.data() as Map<String, dynamic>;
                           final activity = userData["activity"]?.toString() ?? "";
+                          final bool activityVisible =
+                              userData["activityVisible"] == true;
 
-                          if (activity.isEmpty) {
+                          if (activity.isEmpty || !activityVisible) {
                             return const SizedBox.shrink();
                           }
 
