@@ -229,7 +229,197 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
             ),
           ],
         ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: Column(
+        children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+                child: GestureDetector(
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: const Color(0xFF0A1B4D),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(25),
+                        ),
+                      ),
+                      builder: (context) {
+                        return Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "What are you up to?",
+                                style: TextStyle(
+                                  color: Color(0xFF7DD3FC),
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  "☕ Coffee",
+                                  "🍽️ Dinner",
+                                  "🍕 Having Food",
+                                  "🎬 Movie",
+                                  "🎵 Music",
+                                  "🎮 Gaming",
+                                  "🚶 Walk",
+                                  "🏋️ Workout",
+                                  "📚 Studying",
+                                  "💻 Working",
+                                  "😴 Sleeping",
+                                  "💬 Free to Chat",
+                                  "🏖️ Chilling",
+                                ].map((activity) {
+                                  return ActionChip(
+                                    label: Text(
+                                      activity,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    backgroundColor: const Color(0xFF243B73),
+                                    side: const BorderSide(
+                                      color: Colors.white24,
+                                    ),
+                                    onPressed: () async {
+                                      try {
+                                        await FirebaseFirestore.instance
+                                            .collection("users")
+                                            .doc(currentUser!.uid)
+                                            .update({
+                                          "activity": activity,
+                                          "activityUpdatedAt": FieldValue.serverTimestamp(),
+                                        });
+
+                                        if (context.mounted) {
+                                          Navigator.pop(context);
+
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text("$activity updated"),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("Failed to update activity"),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+
+                                    // Photo upload - next step
+                                  },
+                                  icon: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                  ),
+                                  label: const Text(
+                                    "Add a Photo",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: Text(
+                              "✨",
+                              style: TextStyle(fontSize: 24),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(                          
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Your Moment",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                "Share what you're up to",
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.add_circle_outline,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+    Expanded(
+      child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection("users").snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -325,6 +515,28 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Builder(
+                        builder: (context) {
+                          final userData = user.data() as Map<String, dynamic>;
+                          final activity = userData["activity"]?.toString() ?? "";
+
+                          if (activity.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 3, bottom: 3),
+                            child: Text(
+                              activity,
+                              style: const TextStyle(
+                                color: Color(0xFF7DD3FC),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                       Text(
                         user["bio"] ?? "",
                         style: const TextStyle(
@@ -429,6 +641,9 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
           );
         },
       ),
+    ),
+      ],
+    ),
     );
   }
 }

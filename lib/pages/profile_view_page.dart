@@ -1,5 +1,6 @@
 // profile_view_page.dart
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/friend_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -143,6 +144,49 @@ class _ProfileViewPageState extends State<ProfileViewPage> {
                     style: const TextStyle(color: Colors.white)),
               ),
             ),
+            if ((user['instagram'] ?? '').toString().trim().isNotEmpty)
+              Card(
+                color: Colors.white12,
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.camera_alt,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Instagram',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  subtitle: Text(
+                    user['instagram'],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.open_in_new,
+                    color: Colors.white70,
+                  ),
+                  onTap: () async {
+                    String username = user['instagram'].toString().trim();
+
+                    if (username.startsWith('@')) {
+                      username = username.substring(1);
+                    }
+
+                    final Uri url = Uri.parse(
+                      'https://www.instagram.com/$username/',
+                    );
+
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(
+                        url,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                ),
+              ),
             const SizedBox(height: 30),
             FutureBuilder<String>(
               future: getFriendStatus(user['uid']),

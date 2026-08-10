@@ -25,6 +25,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final ageController = TextEditingController();
   final genderController = TextEditingController();
   final bioController = TextEditingController();
+  final instagramController = TextEditingController();
+  String selectedActivity = "";
 
   final ImagePicker picker = ImagePicker();
 
@@ -102,6 +104,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     "age": ageController.text.trim(),
     "gender": genderController.text.trim(),
     "bio": bioController.text.trim(),
+    "instagram": instagramController.text.trim(),
     "phone": user.phoneNumber,
     "email": user.email,
     "image": imageUrl,
@@ -120,6 +123,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     ageController.dispose();
     genderController.dispose();
     bioController.dispose();
+    instagramController.dispose();
     super.dispose();
   }
 
@@ -222,6 +226,21 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+              ),
+            ),
+
+            TextField(
+              controller: instagramController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: "Instagram",
+                hintText: "Instagram username",
+                prefixIcon: Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                ),
+                labelStyle: TextStyle(color: Colors.white),
+                hintStyle: TextStyle(color: Colors.white54),
               ),
             ),
 
