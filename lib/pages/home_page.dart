@@ -2,6 +2,7 @@ import 'friends_page.dart';
 import '../services/friend_service.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -113,6 +114,8 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     updateOnlineStatus(false);
     super.dispose();
   }
+  String selectedMomentActivity = "";
+  File? selectedMomentPhoto;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -248,6 +251,13 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
 
                     final bool isVisible = data?["activityVisible"] == true;
 
+                    if (isVisible) {
+                      selectedMomentActivity = data?["activity"]?.toString() ?? "";
+                    } else {
+                      selectedMomentActivity = "";
+                    }
+                    
+                    final homeContext = context;
                     showModalBottomSheet(
                       context: context,
                       backgroundColor: const Color(0xFF0A1B4D),
@@ -257,7 +267,13 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                         ),
                       ),
                       builder: (context) {
-                        return SafeArea(
+                        bool momentSaved = false;
+                        bool momentDeleted = false;
+                        bool momentExists = isVisible;
+
+                        return StatefulBuilder(
+                          builder: (context, sheetSetState) {
+                          return SafeArea(
                           child: SingleChildScrollView(
                             child: Padding(
                               padding: const EdgeInsets.all(20),
@@ -297,96 +313,34 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                   return ActionChip(
                                     label: Text(
                                       activity,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: selectedMomentActivity == activity
+                                            ? const Color(0xFF0A1B4D)
+                                            : Colors.white,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    backgroundColor: const Color(0xFF243B73),
+                                    backgroundColor: selectedMomentActivity == activity
+                                        ? const Color(0xFF7DD3FC)
+                                        : const Color(0xFF243B73),
                                     side: const BorderSide(
                                       color: Colors.white24,
                                     ),
-                                    onPressed: () async {
-                                      try {
-                                        await FirebaseFirestore.instance
-                                            .collection("users")
-                                            .doc(currentUser!.uid)
-                                            .update({
-                                          "activity": activity,
-                                          "activityVisible": true,
-                                          "activityUpdatedAt": FieldValue.serverTimestamp(),
-                                        });
-
-                                        if (context.mounted) {
-                                          Navigator.pop(context);
-
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text("$activity updated"),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text("Failed to update activity"),
-                                            ),
-                                          );
-                                        }
-                                      }
+                                    onPressed: () {
+                                      sheetSetState(() {
+                                        selectedMomentActivity = activity;
+                                      });
                                     },
                                   );
                                 }).toList(),
                               ),
 
                               const SizedBox(height: 20),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: () async {
-                                    await FirebaseFirestore.instance
-                                        .collection("users")
-                                        .doc(currentUser!.uid)
-                                        .update({
-                                      "activityVisible": !isVisible,
-                                    });
-
-                                    if (!context.mounted) return;
-
-                                    Navigator.pop(context);
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          isVisible
-                                              ? "Your Moment hidden"
-                                              : "Your Moment visible",
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  icon: Icon(
-                                    isVisible
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                    color: Colors.white,
-                                  ),
-                                  label: Text(
-                                    isVisible
-                                        ? "Hide Moment"
-                                        : "Show Moment",
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
 
                               const SizedBox(height: 10),
-
+                            
+                            if (!momentExists)
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
@@ -430,17 +384,43 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                                   ),
                                                   onTap: () async {
                                                     final ImagePicker picker = ImagePicker();
-                              
+
                                                     final XFile? image = await picker.pickImage(
                                                       source: ImageSource.camera,
                                                       imageQuality: 85,
                                                     );
-                              
+                                                    
                                                     if (image == null) return;
-                              
-                                                    final File imageFile = File(image.path);
-                              
-                                                    // Upload imageFile - next step
+                                                    
+                                                    final CroppedFile? croppedImage =
+                                                        await ImageCropper().cropImage(
+                                                      sourcePath: image.path,
+                                                      aspectRatio: const CropAspectRatio(
+                                                        ratioX: 4,
+                                                        ratioY: 3,
+                                                      ),
+                                                      uiSettings: [
+                                                        AndroidUiSettings(
+                                                          toolbarTitle: 'Resize Your Moment Photo',
+                                                          toolbarColor: const Color(0xFF0A1B4D),
+                                                          toolbarWidgetColor: Colors.white,
+                                                          lockAspectRatio: false,
+                                                        ),
+                                                        IOSUiSettings(
+                                                          title: 'Resize Your Moment Photo',
+                                                        ),
+                                                      ],
+                                                    );
+                                                    
+                                                    if (croppedImage == null) return;
+                                                    
+                                                    setState(() {
+                                                      selectedMomentPhoto = File(croppedImage.path);
+                                                    });
+                                                  
+                                                    if (!context.mounted) return;
+                                                  
+                                                    Navigator.pop(context);
                                                   },
                                                 ),
                               
@@ -457,72 +437,43 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                                   ),
                                                   onTap: () async {
                                                     final ImagePicker picker = ImagePicker();
-                              
+                                                  
                                                     final XFile? image = await picker.pickImage(
                                                       source: ImageSource.gallery,
                                                       imageQuality: 85,
                                                     );
-                              
+                                                    
                                                     if (image == null) return;
-                              
-                                                    final File imageFile = File(image.path);
-                              
-                                                    try {
-                                                      var request = http.MultipartRequest(
-                                                        "POST",
-                                                        Uri.parse(
-                                                          "https://api.cloudinary.com/v1_1/pdkqgjw/image/upload",
+                                                    
+                                                    final CroppedFile? croppedImage =
+                                                        await ImageCropper().cropImage(
+                                                      sourcePath: image.path,
+                                                      aspectRatio: const CropAspectRatio(
+                                                        ratioX: 4,
+                                                        ratioY: 3,
+                                                      ),
+                                                      uiSettings: [
+                                                        AndroidUiSettings(
+                                                          toolbarTitle: 'Resize Your Moment Photo',
+                                                          toolbarColor: const Color(0xFF0A1B4D),
+                                                          toolbarWidgetColor: Colors.white,
+                                                          lockAspectRatio: false,
                                                         ),
-                                                      );
-                                                    
-                                                      request.fields["upload_preset"] = "nearby_profile";
-                                                    
-                                                      request.files.add(
-                                                        await http.MultipartFile.fromPath(
-                                                          "file",
-                                                          imageFile.path,
+                                                        IOSUiSettings(
+                                                          title: 'Resize Your Moment Photo',
                                                         ),
-                                                      );
+                                                      ],
+                                                    );
                                                     
-                                                      var response = await request.send();
+                                                    if (croppedImage == null) return;
                                                     
-                                                      if (response.statusCode == 200) {
-                                                        var responseData =
-                                                            await response.stream.bytesToString();
-                                                    
-                                                        var jsonData = jsonDecode(responseData);
-                                                    
-                                                        final String activityPhoto =
-                                                            jsonData["secure_url"];
-                                                    
-                                                        await FirebaseFirestore.instance
-                                                            .collection("users")
-                                                            .doc(currentUser!.uid)
-                                                            .update({
-                                                          "activityPhoto": activityPhoto,
-                                                        });
-                                                    
-                                                        if (!context.mounted) return;
-                                                    
-                                                        Navigator.pop(context);
-                                                    
-                                                        ScaffoldMessenger.of(context).showSnackBar(
-                                                          const SnackBar(
-                                                            content: Text("Moment photo added"),
-                                                          ),
-                                                        );
-                                                      } else {
-                                                        throw Exception("Image upload failed");
-                                                      }
-                                                    } catch (e) {
-                                                      if (!context.mounted) return;
-                                                    
-                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text("Photo upload failed"),
-                                                        ),
-                                                      );
-                                                    }
+                                                    setState(() {
+                                                      selectedMomentPhoto = File(croppedImage.path);
+                                                    });
+                                                  
+                                                    if (!context.mounted) return;
+                                                  
+                                                    Navigator.pop(context);
                                                   },
                                                 ),
                               
@@ -546,7 +497,192 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 10),
+                              if (momentSaved)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    "Your Moment saved successfully! ✨",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              
+                              if (momentDeleted)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    "Your Moment deleted successfully! 🗑️",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              // 💾 Save Moment
+                              SizedBox(
+                                width: double.infinity,
+                                height: 50,
+                                child: momentExists
+                                    ? OutlinedButton.icon(
+                                        onPressed: () async {
+                                          try {
+                                            await FirebaseFirestore.instance
+                                                .collection("users")
+                                                .doc(currentUser!.uid)
+                                                .update({
+                                              "activityVisible": false,
+                                              "activity": FieldValue.delete(),
+                                              "activityPhoto": FieldValue.delete(),
+                                              "activityUpdatedAt": FieldValue.delete(),
+                                            });
+                              
+                                            sheetSetState(() {
+                                              momentExists = false;
+                                              momentSaved = false;
+                                              selectedMomentActivity = "";
+                                              selectedMomentPhoto = null;
+                                              momentDeleted = true;
+                                            });
+
+                                            Future.delayed(const Duration(seconds: 2), () {
+                                              if (!context.mounted) return;
+
+                                              sheetSetState(() {
+                                                momentDeleted = false;
+                                              });
+                                            });
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                              
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text("Failed to delete: $e"),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          color: Colors.redAccent,
+                                        ),
+                                        label: const Text(
+                                          "Delete Moment",
+                                          style: TextStyle(
+                                            color: Colors.redAccent,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      )
+                                    : ElevatedButton.icon(
+                                        onPressed: selectedMomentActivity.isEmpty
+                                            ? null
+                                            : () async {
+                                                try {
+                                                  String? activityPhoto;
+                              
+                                                  // 📸 Upload photo only if selected
+                                                  if (selectedMomentPhoto != null) {
+                                                    final request = http.MultipartRequest(
+                                                      'POST',
+                                                      Uri.parse(
+                                                        'https://api.cloudinary.com/v1_1/pdkqvivw/image/upload',
+                                                      ),
+                                                    );
+                              
+                                                    request.fields["upload_preset"] =
+                                                        "nearby_profile";
+                              
+                                                    request.files.add(
+                                                      await http.MultipartFile.fromPath(
+                                                        "file",
+                                                        selectedMomentPhoto!.path,
+                                                      ),
+                                                    );
+                              
+                                                    final response = await request.send();
+                              
+                                                    final responseData =
+                                                        await response.stream.bytesToString();
+                              
+                                                    if (response.statusCode != 200) {
+                                                      throw Exception(
+                                                        "Cloudinary upload failed: ${response.statusCode}\n$responseData",
+                                                      );
+                                                    }
+                              
+                                                    final jsonData = jsonDecode(responseData);
+                              
+                                                    activityPhoto =
+                                                        jsonData["secure_url"]?.toString();
+                              
+                                                    if (activityPhoto == null ||
+                                                        activityPhoto!.isEmpty) {
+                                                      throw Exception(
+                                                        "Photo URL not received",
+                                                      );
+                                                    }
+                                                  }
+                              
+                                                  final Map<String, dynamic> momentData = {
+                                                    "activity": selectedMomentActivity,
+                                                    "activityVisible": true,
+                                                    "activityUpdatedAt":
+                                                        FieldValue.serverTimestamp(),
+                                                  };
+                              
+                                                  if (activityPhoto != null) {
+                                                    momentData["activityPhoto"] =
+                                                        activityPhoto;
+                                                  }
+                              
+                                                  await FirebaseFirestore.instance
+                                                      .collection("users")
+                                                      .doc(currentUser!.uid)
+                                                      .update(momentData);
+                              
+                                                  sheetSetState(() {
+                                                    momentExists = true;
+                                                    momentSaved = true;
+                                                  });
+                              
+                                                  Future.delayed(
+                                                    const Duration(seconds: 2),
+                                                    () {
+                                                      if (!context.mounted) return;
+                              
+                                                      sheetSetState(() {
+                                                        momentSaved = false;
+                                                      });
+                                                    },
+                                                  );
+                                                } catch (e) {
+                                                  if (!mounted) return;
+
+                                                  ScaffoldMessenger.of(homeContext)
+                                                      .showSnackBar(
+                                                    SnackBar(
+                                                      content: Text("Failed: $e"),
+                                                      duration:
+                                                          const Duration(seconds: 6),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                        icon: const Icon(Icons.check),
+                                        label: const Text(
+                                          "Save Moment",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                              ),
                                 ],
                               ),
                             ),
@@ -555,6 +691,8 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                       },
                     );
                   },
+                );
+              },
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -721,21 +859,45 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                           final activity = userData["activity"]?.toString() ?? "";
                           final bool activityVisible =
                               userData["activityVisible"] == true;
+                          final activityPhoto =
+                              userData["activityPhoto"]?.toString() ?? "";
 
                           if (activity.isEmpty || !activityVisible) {
                             return const SizedBox.shrink();
                           }
 
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 3, bottom: 3),
-                            child: Text(
-                              activity,
-                              style: const TextStyle(
-                                color: Color(0xFF7DD3FC),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3, bottom: 5),
+                                child: Text(
+                                  activity,
+                                  style: const TextStyle(
+                                    color: Color(0xFF7DD3FC),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
-                            ),
+                          
+                              if (activityPhoto.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      activityPhoto,
+                                      width: 120,
+                                      height: 90,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const SizedBox.shrink();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
                           );
                         },
                       ),
