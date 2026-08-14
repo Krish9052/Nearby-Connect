@@ -1,4 +1,5 @@
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
@@ -97,5 +98,43 @@ exports.sendChatNotification = onDocumentCreated(
       await admin.messaging().send(payload);
 
       console.log("Notification sent successfully");
+    },
+);
+exports.deleteExpiredMoments = onSchedule(
+    "every 1 hours",
+    async () => {
+      const db = admin.firestore();
+
+      const cutoff = admin.firestore.Timestamp.fromDate(
+          new Date(Date.now() - 24 * 60 * 60 * 1000),
+      );
+
+      const usersSnapshot = await db
+          .collection("users")
+          .where("activityVisible", "==", true)
+          .where("activityUpdatedAt", "<=", cutoff)
+          .get();
+
+      if (usersSnapshot.empty) {
+        console.log("No expired moments found.");
+        return;
+      }
+
+      const batch = db.batch();
+
+      for (const userDoc of usersSnapshot.docs) {
+        batch.update(userDoc.ref, {
+          activityVisible: false,
+          activity: admin.firestore.FieldValue.delete(),
+          activityPhoto: admin.firestore.FieldValue.delete(),
+          activityUpdatedAt: admin.firestore.FieldValue.delete(),
+        });
+      }
+
+      await batch.commit();
+
+      console.log(
+          `Deleted ${usersSnapshot.size} expired moments.`,
+      );
     },
 );

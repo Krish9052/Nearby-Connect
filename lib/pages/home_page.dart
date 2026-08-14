@@ -14,6 +14,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'profile_view_page.dart';
 import 'my_profile_page.dart';
+import 'chat_list_page.dart';
+import 'dart:async';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -216,21 +218,36 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
               },
             ),
 
-            // Logout
-            IconButton(
-              icon: const Icon(
-                Icons.logout,
-                color: Colors.white,
-              ),
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LoginPage(),
-                  ),
-                  (route) => false,
+            // 💬 Chat
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection("friends")
+                  .where(
+                    "userId",
+                    isEqualTo: FirebaseAuth.instance.currentUser!.uid,
+                  )
+                  .snapshots(),
+            
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return IconButton(
+                    icon: const Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ChatListPage(),
+                        ),
+                      );
+                    },
+                  );
+                }
+              
+                return _HomeChatButton(
+                  friends: snapshot.data!.docs,
                 );
               },
             ),
@@ -1008,6 +1025,156 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     ),
       ],
     ),
+    );
+  }
+}
+class _HomeChatButton extends StatefulWidget {
+  final List<QueryDocumentSnapshot> friends;
+
+  const _HomeChatButton({
+    required this.friends,
+  });
+
+  @override
+  State<_HomeChatButton> createState() => _HomeChatButtonState();
+}
+
+class _HomeChatButtonState extends State<_HomeChatButton> {
+  int unreadCount = 0;
+
+StreamSubscription? _unreadSubscription;
+  @override
+  void initState() {
+    super.initState();
+  
+    _updateUnreadCount();
+  
+    _unreadSubscription = FirebaseFirestore.instance
+        .collectionGroup("messages")
+        .where(
+          "receiverId",
+          isEqualTo: FirebaseAuth.instance.currentUser!.uid,
+        )
+        .where(
+          "read",
+          isEqualTo: false,
+        )
+        .snapshots()
+        .listen((snapshot) {
+          //testing
+          print("🔥 UNREAD LISTENER FIRED: ${snapshot.docs.length}");
+          //
+          if (!mounted) return;
+  
+          setState(() {
+            unreadCount = snapshot.docs.length;
+          });
+        });
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeChatButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.friends.length != widget.friends.length) {
+      _updateUnreadCount();
+    }
+  }
+
+  Future<void> _updateUnreadCount() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) return;
+
+    int total = 0;
+
+    for (final friend in widget.friends) {
+      final friendId = friend["friendId"].toString();
+
+      final chatId = currentUser.uid.compareTo(friendId) < 0
+          ? "${currentUser.uid}_$friendId"
+          : "${friendId}_${currentUser.uid}";
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(chatId)
+          .collection("messages")
+          .where(
+            "receiverId",
+            isEqualTo: currentUser.uid,
+          )
+          .where(
+            "read",
+            isEqualTo: false,
+          )
+          .get();
+
+      total += snapshot.docs.length;
+    }
+
+    if (mounted) {
+      setState(() {
+        unreadCount = total;
+      });
+    }
+  }
+  @override
+  void dispose() {
+    _unreadSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(
+            Icons.chat_bubble_outline,
+            color: Colors.white,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ChatListPage(),
+              ),
+            );
+          },
+        ),
+
+        if (unreadCount > 0)
+          Positioned(
+            right: 3,
+            top: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 2,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 18,
+                minHeight: 18,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                unreadCount > 99
+                    ? "99+"
+                    : unreadCount.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

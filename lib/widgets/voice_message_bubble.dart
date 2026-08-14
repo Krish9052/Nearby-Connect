@@ -67,6 +67,13 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     super.dispose();
   }
 
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
 @override
 Widget build(BuildContext context) {
   return Container(
@@ -92,19 +99,42 @@ Widget build(BuildContext context) {
             }
           },
         ),
-        SizedBox(
-          width: 180,
-          child: Slider(
-            value: position.inSeconds.toDouble(),
-            max: duration.inSeconds > 0
-                ? duration.inSeconds.toDouble()
-                : 1,
-            onChanged: (value) async {
-              await player.seek(
-                Duration(seconds: value.toInt()),
-              );
-            },
-          ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 180,
+              child: Slider(
+                value: position.inSeconds
+                    .toDouble()
+                    .clamp(
+                      0.0,
+                      duration.inSeconds > 0
+                          ? duration.inSeconds.toDouble()
+                          : 1.0,
+                    ),
+                max: duration.inSeconds > 0
+                    ? duration.inSeconds.toDouble()
+                    : 1,
+                onChanged: (value) async {
+                  await player.seek(
+                    Duration(seconds: value.toInt()),
+                  );
+                },
+              ),
+            ),
+        
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _formatDuration(duration),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     ),

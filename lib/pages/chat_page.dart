@@ -28,6 +28,7 @@ class _ChatPageState extends State<ChatPage> {
     final ImagePicker picker = ImagePicker();
     final currentUser = FirebaseAuth.instance.currentUser!;
     final AudioRecorder audioRecorder = AudioRecorder();
+    final ScrollController _chatScrollController = ScrollController();
 
     bool isRecording = false;
     String? recordedFilePath;
@@ -42,6 +43,14 @@ class _ChatPageState extends State<ChatPage> {
       checkFriendStatus();
       checkBlockStatus();
       checkMuteStatus();
+    }
+
+    @override
+    void dispose() {
+      _chatScrollController.dispose();
+      messageController.dispose();
+      audioRecorder.dispose();
+      super.dispose();
     }
     
     Future<void> checkFriendStatus() async {
@@ -181,7 +190,26 @@ class _ChatPageState extends State<ChatPage> {
         ),
       );
     }
-
+    Future<void> _markMessagesAsRead(
+      List<QueryDocumentSnapshot> docs,
+    ) async {
+      final batch = FirebaseFirestore.instance.batch();
+    
+      for (final doc in docs) {
+        final data = doc.data() as Map<String, dynamic>;
+    
+        if (data["receiverId"] == currentUser.uid &&
+            data["read"] == false) {
+          batch.update(doc.reference, {
+            "read": true,
+            "delivered": true,
+          });
+        }
+      }
+    
+      await batch.commit();
+    }
+    
     @override
     Widget build(BuildContext context) {
       return Scaffold(
@@ -363,34 +391,79 @@ class _ChatPageState extends State<ChatPage> {
                   .orderBy("timestamp")
                   .snapshots(),
               builder: (context, snapshot) {
+              
+                //testing
+                print("CHAT PAGE RECEIVER: ${widget.receiverId}");
+
+                final debugChatId =
+                    currentUser.uid.compareTo(widget.receiverId) < 0
+                        ? "${currentUser.uid}_${widget.receiverId}"
+                        : "${widget.receiverId}_${currentUser.uid}";
+
+                print("CHAT PAGE CHAT ID: $debugChatId");
+                print("CHAT PAGE MESSAGES: ${snapshot.data?.docs.length ?? 0}");
+                //
                 if (!snapshot.hasData) {
                   return const Center(
                     child: CircularProgressIndicator(),
                   );
                 }
-                if (snapshot.hasData) {
-                  for (var doc in snapshot.data!.docs) {
-                    final data = doc.data() as Map<String, dynamic>;
+                final docs = snapshot.data!.docs;
+                _markMessagesAsRead(docs);
 
-                    if (data["receiverId"] == currentUser.uid) {
-                      if (data["delivered"] == false) {
-                        doc.reference.update({
-                          "delivered": true,
-                        });
-                      }
-
-                      if (data["read"] == false) {
-                        doc.reference.update({
-                          "read": true,
-                        });
-                      }
+                // Find first unread message
+                int firstUnreadIndex = -1;
+                
+                for (int i = 0; i < docs.length; i++) {
+                  final data = docs[i].data() as Map<String, dynamic>;
+                
+                  if (data["receiverId"] == currentUser.uid &&
+                      data["read"] == false) {
+                    firstUnreadIndex = i;
+                    break;
+                  }
+                }
+                
+                // Scroll to first unread message
+                if (firstUnreadIndex != -1) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!_chatScrollController.hasClients) return;
+                
+                    const double messageHeight = 90.0;
+                
+                    final position =
+                firstUnreadIndex * messageHeight;
+                
+                    _chatScrollController.jumpTo(
+                      position.clamp(
+                        0.0,
+                        _chatScrollController.position.maxScrollExtent,
+                      ),
+                    );
+                  });
+                }
+                
+                // Mark messages as delivered/read
+                for (var doc in docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                
+                  if (data["receiverId"] == currentUser.uid) {
+                    if (data["delivered"] == false) {
+                      doc.reference.update({
+                        "delivered": true,
+                      });
+                    }
+                
+                    if (data["read"] == false) {
+                      doc.reference.update({
+                        "read": true,
+                      });
                     }
                   }
                 }
 
-                final docs = snapshot.data!.docs;
-
                 return ListView.builder(
+                  controller: _chatScrollController,
                   padding: const EdgeInsets.all(20),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
@@ -601,7 +674,7 @@ class _ChatPageState extends State<ChatPage> {
                           const RecordConfig(),
                           path: path,
                         );
-
+                        
                         setState(() {
                           isRecording = true;
                         });
@@ -635,6 +708,10 @@ class _ChatPageState extends State<ChatPage> {
                           chatId = "${widget.receiverId}_${currentUser.uid}";
                         }
 
+                        //testing
+                        print("CHAT PAGE RECEIVER: ${widget.receiverId}");
+                        print("CHAT PAGE CHAT ID: $chatId");
+                        //
                         await FirebaseFirestore.instance
                             .collection("chats")
                             .doc(chatId)
@@ -752,9 +829,12 @@ class _ChatPageState extends State<ChatPage> {
                         .collection("messages")
                         .doc(messageId)
                         .update({
-                      "message": "This message was deleted",
-                      "deleted": true,
-                    });
+                          "message": "This message was deleted",
+                          "deleted": true,
+                          "imageUrl": FieldValue.delete(),
+                          "voiceUrl": FieldValue.delete(),
+                          "reaction": "",
+                        });
                   },
                   child: const Text("Delete for Everyone"),
                 ),
@@ -849,7 +929,15 @@ class _ChatPageState extends State<ChatPage> {
           crossAxisAlignment:
               me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            if (voiceUrl != null && voiceUrl.isNotEmpty)
+            if (deleted)
+              const Text(
+                "🚫 This message was deleted",
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else if (voiceUrl != null && voiceUrl.isNotEmpty)
               VoiceMessageBubble(
                 voiceUrl: voiceUrl,
                 me: me,
@@ -861,15 +949,13 @@ class _ChatPageState extends State<ChatPage> {
                   imageUrl,
                   width: 200,
                   fit: BoxFit.cover,
-               ),
+                ),
               )
             else
               Text(
-                deleted ? "🚫 This message was deleted" : text,
-                style: TextStyle(
-                  color: deleted ? Colors.white54 : Colors.white,
-                  fontStyle:
-                      deleted ? FontStyle.italic : FontStyle.normal,
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
                 ),
               ),
             if (reaction.isNotEmpty)

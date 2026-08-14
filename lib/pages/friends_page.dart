@@ -102,9 +102,8 @@ class FriendsPage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => ChatPage(
-                              receiverId: friend["friendId"],
-                              receiverName: user["name"],
+                            builder: (_) => ProfileViewPage(
+                              userData: user.data() as Map<String, dynamic>,
                             ),
                           ),
                         );
