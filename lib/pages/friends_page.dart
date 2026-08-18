@@ -76,7 +76,13 @@ class FriendsPage extends StatelessWidget {
                         backgroundImage: NetworkImage(user["image"]),
                       ),
 
-                      title: Text(user["name"]),
+                      title: Text(
+                        user["name"],
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                                              ),
+                      ),
 
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

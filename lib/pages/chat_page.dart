@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../widgets/voice_message_bubble.dart';
+import 'call_page.dart';
 
 class ChatPage extends StatefulWidget {
   final String receiverId;
@@ -210,13 +211,41 @@ class _ChatPageState extends State<ChatPage> {
       await batch.commit();
     }
     
+    Future<void> _openCall({required bool video}) async {
+      if (isBlocked) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("You cannot call this user"),
+          ),
+        );
+        return;
+      }
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallPage(
+            receiverName: widget.receiverName,
+            receiverId: widget.receiverId,
+            isVideoCall: video,
+          ),
+        ),
+      );
+    }
+
     @override
     Widget build(BuildContext context) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0A1B4D),
+        backgroundColor: const Color(0xFFF0EDFF),
 
         appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1B4D),
+        backgroundColor: const Color(0xFFF0EDFF),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        iconTheme: const IconThemeData(
+          color: Color(0xFF0A1B4D),
+        ),
         title: StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
               .collection("users")
@@ -235,12 +264,20 @@ class _ChatPageState extends State<ChatPage> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.receiverName),
+                Text(
+                  widget.receiverName,
+                  style: const TextStyle(
+                    color: Color(0xFF0A1B4D),
+                    fontSize: 21,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 Text(
                   typing ? "Typing..." : "",
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Colors.green,
+                    color: Color(0xFF6B4DB8),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -248,10 +285,29 @@ class _ChatPageState extends State<ChatPage> {
           },
         ),
         actions: [
+          IconButton(
+            tooltip: "Audio call",
+            onPressed: () => _openCall(video: false),
+            icon: const Icon(
+              Icons.call_rounded,
+              color: Color(0xFF0A1B4D),
+              size: 27,
+            ),
+          ),
+          IconButton(
+            tooltip: "Video call",
+            onPressed: () => _openCall(video: true),
+            icon: const Icon(
+              Icons.videocam_rounded,
+              color: Color(0xFF0A1B4D),
+              size: 29,
+            ),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(
               Icons.more_vert,
-              color: Colors.white,
+              color: Color(0xFF0A1B4D),
+              size: 30,
             ),
             onSelected: (value) async {
               if (value == "mute") {
@@ -464,33 +520,72 @@ class _ChatPageState extends State<ChatPage> {
 
                 return ListView.builder(
                   controller: _chatScrollController,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final data = docs[index];
-                    final messageData = data.data() as Map<String, dynamic>;
+                    final messageData =
+                        data.data() as Map<String, dynamic>;
 
-                    List deletedFor = messageData["deletedFor"] ?? [];
+                    final List deletedFor =
+                        (messageData["deletedFor"] as List?) ?? [];
 
                     if (deletedFor.contains(currentUser.uid)) {
                       return const SizedBox.shrink();
                     }
 
+                    // Normal text messages have "message".
+                    // Call messages intentionally do not; CallPage stores
+                    // type/isVideo/callStatus instead. Build a safe preview
+                    // so a call record can never crash the chat list.
+                    String displayMessage =
+                        messageData["message"]?.toString() ?? "";
+
+                    if (messageData["type"]?.toString() == "call") {
+                      final bool isVideo =
+                          messageData["isVideo"] == true;
+                      final String status =
+                          messageData["callStatus"]?.toString() ?? "";
+
+                      if (status == "missed") {
+                        displayMessage = isVideo
+                            ? "📹 Missed video call"
+                            : "📞 Missed audio call";
+                      } else {
+                        displayMessage = isVideo
+                            ? "📹 Video call"
+                            : "📞 Audio call";
+                      }
+                    }
+
+                    // Call history is shown as a divider notification,
+                    // not as a normal chat bubble.
+                    if (messageData["type"]?.toString() == "call") {
+                      final bool isVideo =
+                          messageData["isVideo"] == true;
+                      final String status =
+                          messageData["callStatus"]?.toString() ?? "";
+                      final bool missed = status == "missed";
+
+                      return _callDivider(
+                        isVideo: isVideo,
+                        missed: missed,
+                        timestamp: messageData["timestamp"] as Timestamp?,
+                        me: messageData["senderId"] == currentUser.uid,
+                      );
+                    }
+
                     return messageBubble(
                       docs[index].id,
-                      data["message"],
-                      messageData["imageUrl"],
-                      messageData["voiceUrl"],
-                      data["senderId"] == currentUser.uid,
-                      data.data().toString().contains("delivered")
-                          ? data["delivered"]
-                          : false,
-                      data.data().toString().contains("read")
-                          ? data["read"]
-                          : false,
-                      data["timestamp"],
-                      messageData["deleted"] ?? false,
-                      messageData["reaction"] ?? "",
+                      displayMessage,
+                      messageData["imageUrl"]?.toString(),
+                      messageData["voiceUrl"]?.toString(),
+                      messageData["senderId"] == currentUser.uid,
+                      messageData["delivered"] == true,
+                      messageData["read"] == true,
+                      messageData["timestamp"] as Timestamp?,
+                      messageData["deleted"] == true,
+                      messageData["reaction"]?.toString() ?? "",
                     );
                   },
                 );
@@ -499,7 +594,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(15),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
             child: Row(
               children: [
                 IconButton(
@@ -557,8 +652,9 @@ class _ChatPageState extends State<ChatPage> {
                   } 
                 },
                   icon: const Icon(
-                    Icons.image,
-                    color: Colors.white,
+                    Icons.image_rounded,
+                    color: Color(0xFF0A1B4D),
+                    size: 28,
                   ),
                 ),
 
@@ -573,15 +669,36 @@ class _ChatPageState extends State<ChatPage> {
                             "typingTo": value.isNotEmpty ? widget.receiverId : "",
                           });
                         },
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(
+                          color: Color(0xFF0A1B4D),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                        ),
                     decoration: InputDecoration(
                       hintText: "Type message...",
-                      hintStyle:
-                          const TextStyle(color: Colors.white54),
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF8A8EA5),
+                        fontSize: 16,
+                      ),
                       filled: true,
-                      fillColor: Colors.white12,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 15,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(
+                          color: Color(0xFFD5D1E8),
+                          width: 1.5,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF6B4DB8),
+                          width: 1.8,
+                        ),
                       ),
                     ),
                   ),
@@ -649,8 +766,9 @@ class _ChatPageState extends State<ChatPage> {
 
                   },
                   icon: const Icon(
-                    Icons.send,
-                    color: Colors.white,
+                    Icons.send_rounded,
+                    color: Color(0xFF0A1B4D),
+                    size: 29,
                   ),
                 ),
                 IconButton(
@@ -730,8 +848,11 @@ class _ChatPageState extends State<ChatPage> {
                     }
                   },
                   icon: Icon(
-                    isRecording ? Icons.stop : Icons.mic,
-                    color: isRecording ? Colors.red : Colors.white,
+                    isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                    color: isRecording
+                        ? Colors.red
+                        : const Color(0xFF0A1B4D),
+                    size: 29,
                   ),
                 ),
               ],
@@ -743,13 +864,80 @@ class _ChatPageState extends State<ChatPage> {
         child: Text(
           "You can message only your friends",
           style: TextStyle(
-            color: Colors.white,
+            color: Color(0xFF0A1B4D),
             fontSize: 18,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
     );
   }
+  Widget _callDivider({
+    required bool isVideo,
+    required bool missed,
+    required Timestamp? timestamp,
+    required bool me,
+  }) {
+    final time = timestamp == null
+        ? ""
+        : TimeOfDay.fromDateTime(timestamp.toDate()).format(context);
+
+    final label = missed
+        ? (isVideo ? "Missed video call" : "Missed audio call")
+        : (isVideo ? "Video call" : "Audio call");
+
+    final icon = isVideo ? Icons.videocam_rounded : Icons.call_rounded;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Divider(
+              color: Color(0xFFD5D1E8),
+              thickness: 1.2,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Icon(
+            icon,
+            size: 22,
+            color: const Color(0xFF68739A),
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF68739A),
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (time.isNotEmpty) ...[
+            const SizedBox(width: 7),
+            Text(
+              time,
+              style: const TextStyle(
+                color: Color(0xFF9A9CAF),
+                fontSize: 11,
+              ),
+            ),
+          ],
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Divider(
+              color: Color(0xFFD5D1E8),
+              thickness: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget messageBubble(
     String messageId,
     String text,
@@ -920,9 +1108,26 @@ class _ChatPageState extends State<ChatPage> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
 
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
         decoration: BoxDecoration(
-          color: me ? Colors.purpleAccent : Colors.white12,
-          borderRadius: BorderRadius.circular(12),
+          color: me
+              ? const Color(0xFFB53BFF)
+              : Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(22),
+            topRight: const Radius.circular(22),
+            bottomLeft: Radius.circular(me ? 22 : 6),
+            bottomRight: Radius.circular(me ? 6 : 22),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x18000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
 
         child: Column(
@@ -930,10 +1135,12 @@ class _ChatPageState extends State<ChatPage> {
               me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (deleted)
-              const Text(
+              Text(
                 "🚫 This message was deleted",
                 style: TextStyle(
-                  color: Colors.white54,
+                  color: me
+                      ? Colors.white70
+                      : const Color(0xFF68739A),
                   fontStyle: FontStyle.italic,
                 ),
               )
@@ -954,8 +1161,11 @@ class _ChatPageState extends State<ChatPage> {
             else
               Text(
                 text,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: me
+                      ? Colors.white
+                      : const Color(0xFF0A1B4D),
+                  fontSize: 16,
                 ),
               ),
             if (reaction.isNotEmpty)
@@ -975,8 +1185,10 @@ class _ChatPageState extends State<ChatPage> {
                 if (timestamp != null)
                   Text(
                     TimeOfDay.fromDateTime(timestamp.toDate()).format(context),
-                    style: const TextStyle(
-                      color: Colors.white70,
+                    style: TextStyle(
+                      color: me
+                          ? Colors.white70
+                          : const Color(0xFF8A8EA5),
                       fontSize: 11,
                     ),
                   ),
@@ -991,7 +1203,11 @@ class _ChatPageState extends State<ChatPage> {
                             : "✓",
                     style: TextStyle(
                       fontSize: 12,
-                      color: read ? Colors.blue : Colors.white70,
+                      color: read
+                          ? const Color(0xFF5BA7FF)
+                          : (me
+                              ? Colors.white70
+                              : const Color(0xFF8A8EA5)),
                     ),
                   ),
                 ],

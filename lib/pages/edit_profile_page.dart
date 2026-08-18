@@ -108,129 +108,216 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
   @override
   Widget build(BuildContext context) {
+    const navy = Color(0xFF0A1B4D);
+    const lavender = Color(0xFFF0EDFF);
+    const pageBg = Color(0xFFF9F8FF);
+    const muted = Color(0xFF68739A);
+    const blue = Color(0xFF1976D2);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A1B4D),
+      backgroundColor: pageBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1B4D),
+        backgroundColor: lavender,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: navy,
+            size: 32,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           "Edit Profile",
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: navy,
+            fontSize: 27,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-
-            const SizedBox(height: 20),
-
-            GestureDetector(
-              onTap: pickImage,
-              child: CircleAvatar(
-                radius: 60,
-                backgroundImage: profileImage != null
-                    ? FileImage(profileImage!)
-                    : null,
-                child: profileImage == null
-                    ? const Icon(
-                        Icons.camera_alt,
-                        size: 40,
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            TextField(
-              controller: nameController,
-              style: const TextStyle(
-                color: Colors.white,
-              ),
-              decoration: const InputDecoration(
-                labelText: "Name",
-                labelStyle: TextStyle(color: Colors.white70),
-
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white54),
-                ),
-
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
+      body: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: -70,
+            right: -70,
+            height: 330,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: lavender,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(240),
+                  bottomRight: Radius.circular(240),
                 ),
               ),
             ),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+              child: Column(
+                children: [
+                  const SizedBox(height: 18),
 
-            const SizedBox(height: 15),
+                  // Profile photo with a neat white border.
+                  GestureDetector(
+                    onTap: pickImage,
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x22000000),
+                            blurRadius: 14,
+                            offset: Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: 86,
+                        backgroundColor: const Color(0xFFE2E8F0),
+                        backgroundImage: profileImage != null
+                            ? FileImage(profileImage!)
+                            : null,
+                        child: profileImage == null
+                            ? const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 52,
+                                color: Color(0xFF36558F),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
 
-            TextField(
-              controller: ageController,
-              style: const TextStyle(
-                color: Colors.white,
-              ),
-              decoration: const InputDecoration(
-                labelText: "Age",
-                labelStyle: TextStyle(color: Colors.white70),
+                  const SizedBox(height: 34),
 
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white54),
-                ),
+                  _editField(
+                    controller: nameController,
+                    label: "Name",
+                    keyboardType: TextInputType.name,
+                    navy: navy,
+                    muted: muted,
+                    blue: blue,
+                  ),
 
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
-                ),
+                  const SizedBox(height: 20),
+
+                  _editField(
+                    controller: ageController,
+                    label: "Age",
+                    keyboardType: TextInputType.number,
+                    navy: navy,
+                    muted: muted,
+                    blue: blue,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _editField(
+                    controller: genderController,
+                    label: "Gender",
+                    keyboardType: TextInputType.text,
+                    navy: navy,
+                    muted: muted,
+                    blue: blue,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  _editField(
+                    controller: bioController,
+                    label: "Bio",
+                    keyboardType: TextInputType.text,
+                    maxLines: 2,
+                    navy: navy,
+                    muted: muted,
+                    blue: blue,
+                  ),
+
+                  const SizedBox(height: 34),
+
+                  SizedBox(
+                    width: 190,
+                    height: 58,
+                    child: ElevatedButton(
+                      onPressed: saveProfile,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: blue,
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        shadowColor: const Color(0x33000000),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(32),
+                        ),
+                      ),
+                      child: const Text(
+                        "Save Changes",
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 15),
-
-            TextField(
-              controller: genderController,
-              style: const TextStyle(
-                color: Colors.white,
-            ),
-              decoration: const InputDecoration(
-                labelText: "Gender",
-                labelStyle: TextStyle(color: Colors.white70),
-
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white54),
-                ),
-
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            TextField(
-              controller: bioController,
-              style: const TextStyle(
-                color: Colors.white,
-              ),
-              decoration: const InputDecoration(
-                labelText: "Bio",
-                labelStyle: TextStyle(color: Colors.white70),
-
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white54),
-                ),
-
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            ElevatedButton(
-              onPressed: saveProfile,
-              child: const Text("Save Changes"),
-            ),
-
-          ],
+  Widget _editField({
+    required TextEditingController controller,
+    required String label,
+    required TextInputType keyboardType,
+    required Color navy,
+    required Color muted,
+    required Color blue,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      style: const TextStyle(
+        color: Color(0xFF0A1B4D),
+        fontSize: 18,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: Color(0xFF68739A),
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: Color(0xFF1976D2),
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 2,
+          vertical: 8,
+        ),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(
+            color: Color(0xFFD0CCE2),
+            width: 1.5,
+          ),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(
+            color: Color(0xFF1976D2),
+            width: 2,
+          ),
         ),
       ),
     );

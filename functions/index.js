@@ -1,4 +1,7 @@
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
@@ -98,6 +101,164 @@ exports.sendChatNotification = onDocumentCreated(
       await admin.messaging().send(payload);
 
       console.log("Notification sent successfully");
+    },
+);
+exports.sendCallNotification = onDocumentCreated(
+    "calls/{callId}",
+    async (event) => {
+      const callId = event.params.callId;
+      const callData = event.data.data();
+
+      if (!callData) return;
+
+      if (callData.status !== "calling") {
+        return;
+      }
+
+      const callerId = callData.callerId;
+      const receiverId = callData.receiverId;
+
+      const callerDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(callerId)
+          .get();
+
+      const receiverDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(receiverId)
+          .get();
+
+      if (!callerDoc.exists || !receiverDoc.exists) {
+        return;
+      }
+
+      const caller = callerDoc.data();
+      const receiver = receiverDoc.data();
+
+      const token = receiver.fcmToken;
+
+      if (!token) {
+        console.log("Receiver has no FCM token");
+        return;
+      }
+
+      const callerName = caller.name || "Someone";
+
+      const payload = {
+        notification: {
+          title: "📞 Incoming Call",
+          body: `${callerName} is calling you`,
+        },
+
+        data: {
+          type: "incoming_call",
+          callId: callId,
+          callerId: callerId,
+          callerName: callerName,
+        },
+
+        token: token,
+
+        android: {
+          priority: "high",
+
+          notification: {
+            channelId: "incoming_calls",
+            sound: "default",
+            tag: "call",
+          },
+        },
+      };
+
+      await admin.messaging().send(payload);
+
+      console.log(
+          `📞 Incoming call notification sent: ${callId}`,
+      );
+    },
+);
+exports.sendMissedCallNotification = onDocumentUpdated(
+    "calls/{callId}",
+    async (event) => {
+      const before = event.data.before.data();
+      const after = event.data.after.data();
+
+      if (!before || !after) {
+        return;
+      }
+
+      // Only unanswered call:
+      // calling → ended
+      if (
+        before.status !== "calling" ||
+        after.status !== "ended"
+      ) {
+        return;
+      }
+
+      const callId = event.params.callId;
+
+      const callerId = after.callerId;
+      const receiverId = after.receiverId;
+
+      const callerDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(callerId)
+          .get();
+
+      const receiverDoc = await admin
+          .firestore()
+          .collection("users")
+          .doc(receiverId)
+          .get();
+
+      if (!callerDoc.exists || !receiverDoc.exists) {
+        return;
+      }
+
+      const caller = callerDoc.data();
+      const receiver = receiverDoc.data();
+
+      // Missed-call notification must go to B (receiver)
+      const token = receiver.fcmToken;
+
+      if (!token) {
+        console.log("Receiver has no FCM token");
+        return;
+      }
+
+      const callerName = caller.name || "Someone";
+
+      const payload = {
+        notification: {
+          title: "📞 Missed Call",
+          body: `You missed a call from ${callerName}`,
+        },
+        data: {
+          type: "missed_call",
+          callId: callId,
+          callerId: callerId,
+          callerName: callerName,
+        },
+        token: token,
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "incoming_calls",
+            sound: "default",
+            tag: "call",
+          },
+        },
+      };
+
+      await admin.messaging().send(payload);
+
+      console.log(
+          `📞 Missed call notification sent: ${callId}`,
+      );
     },
 );
 exports.deleteExpiredMoments = onSchedule(

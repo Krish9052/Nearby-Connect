@@ -7,14 +7,22 @@ import 'pages/home_page.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'pages/profile_setup.dart';
+import 'theme/app_theme.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 @pragma('vm:entry-point')
-
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(
+  RemoteMessage message,
+) async {
   await Firebase.initializeApp();
+
+  final data = message.data;
+
+  print(
+    "📞 BACKGROUND FCM: $data",
+  );
 }
 
 void main() async {
@@ -83,6 +91,7 @@ class NearbyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
       home: FirebaseAuth.instance.currentUser != null
           ? const HomePage()

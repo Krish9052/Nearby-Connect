@@ -16,12 +16,24 @@ class _MyProfilePageState extends State<MyProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A1B4D),
+      backgroundColor: const Color(0xFFF9F8FF),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1B4D),
+        toolbarHeight: 56,
+        backgroundColor: const Color(0xFFF0EDFF),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back,
+              color: Color(0xFF0A1B4D), size: 34),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           "My Profile",
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: Color(0xFF0A1B4D),
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       body: StreamBuilder<DocumentSnapshot>(
@@ -32,107 +44,161 @@ class _MyProfilePageState extends State<MyProfilePage> {
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(
-              child: CircularProgressIndicator(),
+              child: CircularProgressIndicator(
+                color: Color(0xFF1976D2),
+              ),
             );
           }
 
           final user =
               snapshot.data!.data() as Map<String, dynamic>;
 
-          return SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 30,
+          return Stack(
+            children: [
+              Positioned(
+                top: 0,
+                left: -70,
+                right: -70,
+                height: 365,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0EDFF),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(260),
+                      bottomRight: Radius.circular(260),
+                    ),
+                  ),
+                ),
               ),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 20),
-
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundImage: user["image"] != null &&
-                              user["image"] != ""
-                          ? NetworkImage(user["image"])
-                          : null,
-                      child: (user["image"] == null ||
-                              user["image"] == "")
-                          ? const Icon(
-                              Icons.person,
-                              size: 60,
-                            )
-                          : null,
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Text(
-                      user["name"] ?? "",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Text(
-                      user["bio"] ?? "",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.edit),
-                        label: const Text(
-                          "Edit Profile",
-                          style: TextStyle(fontSize: 18),
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const EditProfilePage(),
+              SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 28),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x22000000),
+                              blurRadius: 14,
+                              offset: Offset(0, 6),
                             ),
-                          );
-                        },
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: 96,
+                          backgroundColor: const Color(0xFFE2E8F0),
+                          backgroundImage:
+                              user["image"] != null &&
+                                      user["image"] != ""
+                                  ? NetworkImage(user["image"])
+                                  : null,
+                          child: (user["image"] == null ||
+                                  user["image"] == "")
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 90,
+                                  color: Color(0xFF1E293B),
+                                )
+                              : null,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.logout),
-                        label: const Text("Logout"),
-                        onPressed: () async {
-                          await FirebaseAuth.instance.signOut();
-
-                          Navigator.pop(context);
-                        },
+                      const SizedBox(height: 22),
+                      Text(
+                        user["name"] ?? "",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFF0A1B4D),
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                  ],
-            ),
-          ),
-        ),
-      );
-    },
-  ),
-);
+                      const SizedBox(height: 8),
+                      Text(
+                        user["bio"] ?? "",
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF68739A),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 58,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.edit, size: 27),
+                          label: const Text(
+                            "Edit Profile",
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const EditProfilePage(),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1976D2),
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            shadowColor: const Color(0x33000000),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(32),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 58,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.logout, size: 28),
+                          label: const Text(
+                            "Logout",
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          onPressed: () async {
+                            await FirebaseAuth.instance.signOut();
+                            Navigator.pop(context);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF68739A),
+                            side: const BorderSide(
+                              color: Color(0xFFD5D1E8),
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(32),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
