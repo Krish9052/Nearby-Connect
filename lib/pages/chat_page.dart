@@ -7,6 +7,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:video_player/video_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/voice_message_bubble.dart';
 import 'call_page.dart';
 
@@ -52,6 +55,26 @@ class _ChatPageState extends State<ChatPage> {
       messageController.dispose();
       audioRecorder.dispose();
       super.dispose();
+    }
+
+    void _scrollToBottom({bool animated = true}) {
+      if (!_chatScrollController.hasClients) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_chatScrollController.hasClients) return;
+
+        final position = _chatScrollController.position.maxScrollExtent;
+
+        if (animated) {
+          _chatScrollController.animateTo(
+            position,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+          );
+        } else {
+          _chatScrollController.jumpTo(position);
+        }
+      });
     }
     
     Future<void> checkFriendStatus() async {
@@ -233,6 +256,116 @@ class _ChatPageState extends State<ChatPage> {
         ),
       );
     }
+
+    String _chatId() => currentUser.uid.compareTo(widget.receiverId) < 0
+        ? "${currentUser.uid}_${widget.receiverId}"
+        : "${widget.receiverId}_${currentUser.uid}";
+
+    Future<void> _sendAttachment({
+      required File file,
+      required String storageFolder,
+      required String fieldName,
+      String? fileName,
+    }) async {
+      try {
+        final name = fileName ??
+            "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
+        final ref = FirebaseStorage.instance.ref().child(storageFolder).child(name);
+        await ref.putFile(file);
+        final url = await ref.getDownloadURL();
+        final data = <String, dynamic>{
+          "senderId": currentUser.uid,
+          "receiverId": widget.receiverId,
+          "message": "",
+          fieldName: url,
+          "timestamp": FieldValue.serverTimestamp(),
+          "delivered": false,
+          "read": false,
+          "deletedFor": [],
+          "reaction": "",
+        };
+        if (fieldName == "documentUrl") data["fileName"] = file.path.split('/').last;
+        await FirebaseFirestore.instance.collection("chats").doc(_chatId()).collection("messages").add(data);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(animated: true));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      }
+    }
+
+    Future<void> _pickPhoto() async {
+      final x = await picker.pickImage(source: ImageSource.gallery);
+      if (x != null) await _sendAttachment(file: File(x.path), storageFolder: "chat_images", fieldName: "imageUrl");
+    }
+
+    Future<void> _takePhoto() async {
+      final x = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+      if (x != null) await _sendAttachment(file: File(x.path), storageFolder: "chat_images", fieldName: "imageUrl");
+    }
+
+    Future<void> _pickVideo() async {
+      final x = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 5));
+      if (x != null) await _sendAttachment(file: File(x.path), storageFolder: "chat_videos", fieldName: "videoUrl");
+    }
+
+    Future<void> _pickDocument() async {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        allowedExtensions: ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','csv','zip'],
+      );
+      if (result == null || result.files.single.path == null) return;
+      final f = result.files.single;
+      await _sendAttachment(file: File(f.path!), storageFolder: "chat_documents", fieldName: "documentUrl", fileName: "${DateTime.now().millisecondsSinceEpoch}_${f.name}");
+    }
+
+    Future<void> _pickAudioFile() async {
+      final result = await FilePicker.platform.pickFiles(type: FileType.audio, allowMultiple: false);
+      if (result == null || result.files.single.path == null) return;
+      final f = result.files.single;
+      await _sendAttachment(file: File(f.path!), storageFolder: "chat_audio", fieldName: "audioUrl", fileName: "${DateTime.now().millisecondsSinceEpoch}_${f.name}");
+    }
+
+    Future<void> _showAttachmentMenu() async {
+      if (isBlocked) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You have blocked this user")));
+        return;
+      }
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: const Color(0xFFF0EDFF),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 18,
+              children: [
+                _attachmentOption(sheetContext, Icons.photo_library_rounded, "Photo", const Color(0xFF6B4DB8), () { Navigator.pop(sheetContext); _pickPhoto(); }),
+                _attachmentOption(sheetContext, Icons.camera_alt_rounded, "Camera", const Color(0xFF2563EB), () { Navigator.pop(sheetContext); _takePhoto(); }),
+                _attachmentOption(sheetContext, Icons.videocam_rounded, "Video", const Color(0xFFE85D8C), () { Navigator.pop(sheetContext); _pickVideo(); }),
+                _attachmentOption(sheetContext, Icons.insert_drive_file_rounded, "Document", const Color(0xFF0F766E), () { Navigator.pop(sheetContext); _pickDocument(); }),
+                _attachmentOption(sheetContext, Icons.audiotrack_rounded, "Audio", const Color(0xFFD97706), () { Navigator.pop(sheetContext); _pickAudioFile(); }),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget _attachmentOption(BuildContext c, IconData icon, String label, Color color, VoidCallback onTap) => SizedBox(
+      width: 88,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 58, height: 58, decoration: BoxDecoration(color: color.withOpacity(.12), shape: BoxShape.circle), child: Icon(icon, color: color, size: 28)),
+          const SizedBox(height: 7),
+          Text(label, style: const TextStyle(color: Color(0xFF0A1B4D), fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
 
     @override
     Widget build(BuildContext context) {
@@ -467,38 +600,11 @@ class _ChatPageState extends State<ChatPage> {
                 final docs = snapshot.data!.docs;
                 _markMessagesAsRead(docs);
 
-                // Find first unread message
-                int firstUnreadIndex = -1;
-                
-                for (int i = 0; i < docs.length; i++) {
-                  final data = docs[i].data() as Map<String, dynamic>;
-                
-                  if (data["receiverId"] == currentUser.uid &&
-                      data["read"] == false) {
-                    firstUnreadIndex = i;
-                    break;
-                  }
-                }
-                
-                // Scroll to first unread message
-                if (firstUnreadIndex != -1) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_chatScrollController.hasClients) return;
-                
-                    const double messageHeight = 90.0;
-                
-                    final position =
-                firstUnreadIndex * messageHeight;
-                
-                    _chatScrollController.jumpTo(
-                      position.clamp(
-                        0.0,
-                        _chatScrollController.position.maxScrollExtent,
-                      ),
-                    );
-                  });
-                }
-                
+                // Always open/update the chat at the latest message.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToBottom(animated: false);
+                });
+
                 // Mark messages as delivered/read
                 for (var doc in docs) {
                   final data = doc.data() as Map<String, dynamic>;
@@ -580,6 +686,10 @@ class _ChatPageState extends State<ChatPage> {
                       displayMessage,
                       messageData["imageUrl"]?.toString(),
                       messageData["voiceUrl"]?.toString(),
+                      messageData["videoUrl"]?.toString(),
+                      messageData["audioUrl"]?.toString(),
+                      messageData["documentUrl"]?.toString(),
+                      messageData["fileName"]?.toString(),
                       messageData["senderId"] == currentUser.uid,
                       messageData["delivered"] == true,
                       messageData["read"] == true,
@@ -598,64 +708,9 @@ class _ChatPageState extends State<ChatPage> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: () async {
-                    if (isBlocked) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("You have blocked this user"),
-                        ),
-                      );
-                      return;
-                    }
-                  try {
-                    final XFile? image = await picker.pickImage(
-                      source: ImageSource.gallery,
-                    );
-
-                    if (image == null) return;
-
-                    final file = File(image.path);
-
-                    final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-
-                    final ref = FirebaseStorage.instance
-                        .ref()
-                        .child("chat_images")
-                        .child(fileName);
-
-                    await ref.putFile(file);
-
-                    final imageUrl = await ref.getDownloadURL();
-
-                    await FirebaseFirestore.instance
-                        .collection("chats")
-                        .doc(
-                          currentUser.uid.compareTo(widget.receiverId) < 0
-                              ? "${currentUser.uid}_${widget.receiverId}"
-                              : "${widget.receiverId}_${currentUser.uid}",
-                        )
-                        .collection("messages")
-                        .add({
-                          "senderId": FirebaseAuth.instance.currentUser!.uid,
-                          "receiverId": widget.receiverId,
-                          "message": "",
-                          "imageUrl": imageUrl,
-                          "timestamp": FieldValue.serverTimestamp(),
-                          "delivered": false,
-                          "read": false,
-                          "deletedFor": [],
-                          "reaction": "",
-                        });
-                    print("Step 3");
-                  } catch (e) {
-                    print("ERROR: $e");
-                  } 
-                },
-                  icon: const Icon(
-                    Icons.image_rounded,
-                    color: Color(0xFF0A1B4D),
-                    size: 28,
-                  ),
+                  tooltip: "Attachments",
+                  onPressed: _showAttachmentMenu,
+                  icon: const Icon(Icons.attach_file_rounded, color: Color(0xFF0A1B4D), size: 29),
                 ),
 
                 Expanded(
@@ -943,6 +998,10 @@ class _ChatPageState extends State<ChatPage> {
     String text,
     String? imageUrl,
     String? voiceUrl,
+    String? videoUrl,
+    String? audioUrl,
+    String? documentUrl,
+    String? fileName,
     bool me,
     bool delivered,
     bool read,
@@ -1021,6 +1080,10 @@ class _ChatPageState extends State<ChatPage> {
                           "deleted": true,
                           "imageUrl": FieldValue.delete(),
                           "voiceUrl": FieldValue.delete(),
+                          "videoUrl": FieldValue.delete(),
+                          "audioUrl": FieldValue.delete(),
+                          "documentUrl": FieldValue.delete(),
+                          "fileName": FieldValue.delete(),
                           "reaction": "",
                         });
                   },
@@ -1144,18 +1207,30 @@ class _ChatPageState extends State<ChatPage> {
                   fontStyle: FontStyle.italic,
                 ),
               )
+            else if (videoUrl != null && videoUrl.isNotEmpty)
+              VideoMessageBubble(videoUrl: videoUrl, me: me)
+            else if (audioUrl != null && audioUrl.isNotEmpty)
+              VoiceMessageBubble(voiceUrl: audioUrl, me: me)
             else if (voiceUrl != null && voiceUrl.isNotEmpty)
-              VoiceMessageBubble(
-                voiceUrl: voiceUrl,
-                me: me,
-              )
+              VoiceMessageBubble(voiceUrl: voiceUrl, me: me)
+            else if (documentUrl != null && documentUrl.isNotEmpty)
+              _documentBubble(documentUrl, fileName ?? "Document", me)
             else if (imageUrl != null && imageUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  imageUrl,
-                  width: 200,
-                  fit: BoxFit.cover,
+              GestureDetector(
+                onTap: () => _openImageFullScreen(imageUrl),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 230,
+                    height: 288,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.broken_image_rounded, size: 34),
+                      ),
+                    ),
+                  ),
                 ),
               )
             else
@@ -1219,4 +1294,244 @@ class _ChatPageState extends State<ChatPage> {
     ),
   );
 }
+
+  void _openImageFullScreen(String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          body: SafeArea(
+            child: Center(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4.0,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.broken_image_rounded,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _documentBubble(String url, String name, bool me) {
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.tryParse(url);
+        if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: me ? Colors.white.withOpacity(.16) : const Color(0xFFF4F2FA),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.insert_drive_file_rounded, color: me ? Colors.white : const Color(0xFF6B4DB8), size: 32),
+          const SizedBox(width: 10),
+          Flexible(child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: me ? Colors.white : const Color(0xFF0A1B4D), fontWeight: FontWeight.w600))),
+          const SizedBox(width: 6),
+          Icon(Icons.open_in_new_rounded, size: 18, color: me ? Colors.white70 : const Color(0xFF68739A)),
+        ]),
+      ),
+    );
+  }
+}
+
+class VideoMessageBubble extends StatefulWidget {
+  final String videoUrl;
+  final bool me;
+  const VideoMessageBubble({super.key, required this.videoUrl, required this.me});
+  @override State<VideoMessageBubble> createState() => _VideoMessageBubbleState();
+}
+
+class _VideoMessageBubbleState extends State<VideoMessageBubble> {
+  late final VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _openVideoFullScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _FullScreenVideoPage(videoUrl: widget.videoUrl),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Video only: 16:9 preview ratio.
+    const double mediaWidth = 230;
+    const double mediaHeight = 129.375;
+
+    if (!_controller.value.isInitialized) {
+      return Container(
+        width: mediaWidth,
+        height: mediaHeight,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE9E6F2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Color(0xFF6B4DB8),
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _openVideoFullScreen,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: mediaWidth,
+          height: mediaHeight,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller.value.size.width,
+                    height: _controller.value.size.height,
+                    child: VideoPlayer(_controller),
+                  ),
+                ),
+              ),
+              Container(
+                width: 54,
+                height: 54,
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenVideoPage extends StatefulWidget {
+  final String videoUrl;
+  const _FullScreenVideoPage({required this.videoUrl});
+
+  @override
+  State<_FullScreenVideoPage> createState() => _FullScreenVideoPageState();
+}
+
+class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
+  late final VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: !_controller.value.isInitialized
+              ? const CircularProgressIndicator(color: Colors.white)
+              : GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _controller.value.isPlaying
+                          ? _controller.pause()
+                          : _controller.play();
+                    });
+                  },
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio == 0
+                          ? 1
+                          : _controller.value.aspectRatio,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          VideoPlayer(_controller),
+                          if (!_controller.value.isPlaying)
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 42,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 }

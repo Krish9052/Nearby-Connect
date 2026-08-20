@@ -10,11 +10,36 @@ class WebRTCService {
   RTCPeerConnection? peerConnection;
   MediaStream? localStream;
 
+  Future<bool> _isBlockedBetween(
+    String userA,
+    String userB,
+  ) async {
+    final aBlockedB = await _firestore
+        .collection("blocks")
+        .doc("${userA}_${userB}")
+        .get();
+
+    if (aBlockedB.exists) return true;
+
+    final bBlockedA = await _firestore
+        .collection("blocks")
+        .doc("${userB}_${userA}")
+        .get();
+
+    return bBlockedA.exists;
+  }
+
   Future<String> createCall({
     required String callerId,
     required String receiverId,
     bool isVideo = false,
   }) async {
+    final blocked = await _isBlockedBetween(callerId, receiverId);
+
+    if (blocked) {
+      throw Exception("This user is blocked. Calls are not allowed.");
+    }
+
     final callDoc = _firestore.collection("calls").doc();
 
     await callDoc.set({
@@ -148,55 +173,71 @@ class WebRTCService {
     required String callId,
     bool isVideo = false,
   }) async {
+    final callDoc =
+        _firestore.collection("calls").doc(callId);
+
+    final snapshot = await callDoc.get();
+
+    final data = snapshot.data();
+
+    if (data == null) {
+      throw Exception("Call not found");
+    }
+
+    final callerId = data["callerId"]?.toString();
+    final receiverId = data["receiverId"]?.toString();
+
+    if (callerId == null || receiverId == null) {
+      throw Exception("Invalid call participants");
+    }
+
+    final blocked = await _isBlockedBetween(callerId, receiverId);
+
+    if (blocked) {
+      await callDoc.update({
+        "status": "rejected",
+      });
+      throw Exception("This user is blocked. Calls are not allowed.");
+    }
+
     if (peerConnection == null) {
       await initialize();
     }
-  
+
     await getLocalMediaStream(
       video: isVideo,
     );
-  
+
     await listenForIceCandidates(
       callId: callId,
       isCaller: false,
     );
-  
-    final callDoc =
-        _firestore.collection("calls").doc(callId);
-  
-    final snapshot = await callDoc.get();
-  
-    final data = snapshot.data();
-  
-    if (data == null) {
-      throw Exception("Call not found");
-    }
-  
+
     final offerData = data["offer"];
-  
+
     if (offerData == null) {
       throw Exception("Call offer not found");
-  }
+    }
 
     final offer = RTCSessionDescription(
       offerData["sdp"],
       offerData["type"],
     );
-  
+
     await peerConnection!.setRemoteDescription(offer);
-  
+
     await createAnswer(
       callId: callId,
     );
-  
+
     await listenForRemoteIceCandidates(
       callId: callId,
       isCaller: false,
     );
-  
+
     print("✅ CALL ACCEPTED: $callId");
   }
-  
+
   Future<void> listenForAnswer({
     required String callId,
     required void Function() onConnected,

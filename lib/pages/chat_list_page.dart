@@ -55,12 +55,24 @@ class ChatListPage extends StatelessWidget {
             );
           }
 
+          if (friendsSnapshot.hasError) {
+            return Center(
+              child: Text(
+                "Unable to load chats",
+                style: const TextStyle(
+                  color: Color(0xFF68739A),
+                  fontSize: 17,
+                ),
+              ),
+            );
+          }
+
           if (!friendsSnapshot.hasData) {
             return const Center(
               child: Text(
                 "No messages",
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: Color(0xFF68739A),
                   fontSize: 17,
                 ),
               ),
@@ -264,6 +276,82 @@ class ChatListPage extends StatelessWidget {
                               receiverName: friendName,
                             ),
                           ),
+                        );
+                      },
+
+                      // Long press -> delete conversation for this user only.
+                      onLongPress: () {
+                        showDialog(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              title: const Text(
+                                "Delete Conversation?",
+                                style: TextStyle(
+                                  color: Color(0xFF0A1B4D),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              content: const Text(
+                                "This conversation will be removed from your chat list. Your friend will still have the messages.",
+                                style: TextStyle(
+                                  color: Color(0xFF68739A),
+                                  fontSize: 15,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(dialogContext);
+                                  },
+                                  child: const Text(
+                                    "Cancel",
+                                    style: TextStyle(
+                                      color: Color(0xFF68739A),
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    Navigator.pop(dialogContext);
+
+                                    await FirebaseFirestore.instance
+                                        .collection("users")
+                                        .doc(currentUser.uid)
+                                        .collection("deletedConversations")
+                                        .doc(friendId)
+                                        .set({
+                                      "deletedAt": Timestamp.now(),
+                                    });
+
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            "Conversation deleted",
+                                          ),
+                                          duration:
+                                              Duration(milliseconds: 1400),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    "Delete",
+                                    style: TextStyle(
+                                      color: Color(0xFF6B4DB8),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),

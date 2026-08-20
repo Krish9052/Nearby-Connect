@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: true when either user has blocked the other.
+    function isBlocked(userA, userB) {
+      return exists(
+        /databases/$(database)/documents/blocks/$(userA + "_" + userB)
+      ) ||
+      exists(
+        /databases/$(database)/documents/blocks/$(userB + "_" + userA)
+      );
+    }
+
+    // -----------------------------
+    // Users
+    // -----------------------------
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // -----------------------------
+    // Chats
+    // -----------------------------
+    match /chats/{chatId} {
+      allow read, write: if request.auth != null;
+
+      match /messages/{messageId} {
+        // Reading existing chat history remains available to signed-in users.
+        allow read: if request.auth != null;
+
+        // A user may create a message only as themselves and only when
+        // neither side has blocked the other.
+        allow create: if request.auth != null
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.receiverId is string
+          && !isBlocked(
+            request.auth.uid,
+            request.resource.data.receiverId
+          );
+
+        // Message edits/deletes are allowed only for an authenticated user.
+        // Keep the sender/receiver identities unchanged.
+        allow update: if request.auth != null
+          && resource.data.senderId == request.auth.uid
+          && request.resource.data.senderId == resource.data.senderId
+          && request.resource.data.receiverId == resource.data.receiverId;
+
+        allow delete: if request.auth != null
+          && resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // -----------------------------
+    // Calls
+    // -----------------------------
+    match /calls/{callId} {
+      // Creating a call is blocked in either direction.
+      allow create: if request.auth != null
+        && request.resource.data.callerId == request.auth.uid
+        && request.resource.data.receiverId is string
+        && !isBlocked(
+          request.auth.uid,
+          request.resource.data.receiverId
+        );
+
+      // Call participants can read/update their own call documents.
+      allow read, update: if request.auth != null
+        && (
+          resource.data.callerId == request.auth.uid ||
+          resource.data.receiverId == request.auth.uid
+        );
+
+      allow delete: if request.auth != null
+        && (
+          resource.data.callerId == request.auth.uid ||
+          resource.data.receiverId == request.auth.uid
+        );
+    }
+
+    // -----------------------------
+    // Friends / requests
+    // -----------------------------
+    match /friends/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /friend_requests/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // -----------------------------
+    // Block / mute state
+    // -----------------------------
+    // These are intentionally left available to signed-in users so the
+    // existing app's current block/mute implementation is not broken.
+    // The actual communication protection is enforced above.
+    match /blocks/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /mutes/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+
+  }
+}

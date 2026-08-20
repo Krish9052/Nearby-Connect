@@ -1133,16 +1133,67 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
                               if (activityPhoto.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      activityPhoto,
-                                      width: 120,
-                                      height: 90,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return const SizedBox.shrink();
-                                      },
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      showDialog(
+                                        context: context,
+                                        barrierColor: Colors.black87,
+                                        builder: (imageContext) {
+                                          return Dialog(
+                                            backgroundColor: Colors.transparent,
+                                            insetPadding: const EdgeInsets.all(12),
+                                            child: Stack(
+                                              alignment: Alignment.center,
+                                              children: [
+                                                InteractiveViewer(
+                                                  minScale: 0.8,
+                                                  maxScale: 4.0,
+                                                  child: Image.network(
+                                                    activityPhoto,
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder:
+                                                        (context, error, stackTrace) {
+                                                      return const Icon(
+                                                        Icons.broken_image_outlined,
+                                                        color: Colors.white70,
+                                                        size: 52,
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                                Positioned(
+                                                  top: 0,
+                                                  right: 0,
+                                                  child: Material(
+                                                    color: Colors.black54,
+                                                    shape: const CircleBorder(),
+                                                    child: IconButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(imageContext),
+                                                      icon: const Icon(
+                                                        Icons.close_rounded,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.network(
+                                        activityPhoto,
+                                        width: 120,
+                                        height: 90,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const SizedBox.shrink();
+                                        },
+                                      ),
                                     ),
                                   ),
                                 ),
